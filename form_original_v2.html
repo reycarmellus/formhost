@@ -744,13 +744,22 @@ document.addEventListener('DOMContentLoaded', function() {
   applyVisibility();
 });
 </script>
-
+  
 <script>
 const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7m-HD4tJXGuclhS0ZOD38ex91iEtFGXTSutp8vtSHowmYR9jUP98ZG1XzbX38nn82JA/exec';
 
 document.addEventListener('DOMContentLoaded', function () {
-  const form = document.querySelector('form');
+  const form = document.getElementById('intakeForm') || document.querySelector('form');
   if (!form) return;
+
+  // turn off saved suggestions
+  form.setAttribute('autocomplete','off');
+  form.querySelectorAll('input,select,textarea').forEach(el => {
+    el.setAttribute('autocomplete','off');
+    el.setAttribute('autocapitalize','off');
+    el.setAttribute('autocorrect','off');
+    el.spellcheck = false;
+  });
 
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
@@ -761,103 +770,44 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  function collectPlainData(formEl) {
-    const out = {};
-    const fd = new FormData(formEl);
-    for (const [k, v] of fd.entries()) {
-      if (v instanceof File) continue;
-      if (k.endsWith('[]')) {
-        const key = k.slice(0, -2);
-        if (!Array.isArray(out[key])) out[key] = [];
-        out[key].push(v);
-      } else if (out[k] !== undefined) {
-        if (!Array.isArray(out[k])) out[k] = [out[k]];
-        out[k].push(v);
-      } else {
-        out[k] = v;
-      }
-    }
-    return out;
-  }
-
   async function collectAttachments(formEl) {
-    const list = [];
+    const out = [];
     const inputs = formEl.querySelectorAll('input[type="file"]');
     for (const input of inputs) {
       if (!input.files || !input.files.length) continue;
       for (const f of input.files) {
-        list.push({
+        out.push({
           fileName: f.name,
           mimeType: f.type || 'application/octet-stream',
           fileData: await fileToBase64(f)
         });
       }
     }
-    return list;
+    return out;
   }
 
-  function statusEl() {
-    let el = document.getElementById('status');
-    if (!el) {
-      el = document.createElement('p');
-      el.id = 'status';
-      el.style.marginTop = '8px';
-      form.appendChild(el);
-    }
-    return el;
-  }
-
-  form.addEventListener('submit', async function (e) {
-    e.preventDefault();
-    const status = statusEl();
-    status.textContent = 'Sending';
-
-    try {
-      const data = collectPlainData(form);
-      const attachments = await collectAttachments(form);
-
-      const res = await fetch(GAS_ENDPOINT, {
-        method: 'POST',
-        body: JSON.stringify({ data, attachments })
-      });
-
-      const text = await res.text();
-      let json;
-      try { json = JSON.parse(text); } catch { json = { success:false, message:text }; }
-
-      if (json.success || json.ok) {
-        const ref = json.respondentId || '';
-        const link = json.filesUrl || '';
-        status.innerHTML = 'Submitted. ' + (ref ? 'Reference ID: ' + ref + ' ' : '') + (link ? '<a href="' + link + '" target="_blank">View upload</a>' : '');
-        form.reset();
+  function collectPlainData(formEl) {
+    const obj = {};
+    const fd = new FormData(formEl);
+    for (const [k, v] of fd.entries()) {
+      if (v instanceof File) continue;
+      if (k.endsWith('[]')) {
+        const key = k.slice(0, -2);
+        if (!Array.isArray(obj[key])) obj[key] = [];
+        obj[key].push(v);
+      } else if (obj[k] !== undefined) {
+        if (!Array.isArray(obj[k])) obj[k] = [obj[k]];
+        obj[k].push(v);
       } else {
-        status.textContent = 'Error: ' + (json.message || json.error || 'Unknown error');
+        obj[k] = v;
       }
-    } catch (err) {
-      status.textContent = 'Error: ' + err.message;
     }
-  });
-});
-</script>
-  
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-  const form = document.getElementById('intakeForm') || document.querySelector('form');
-  if (!form) return;
+    return obj;
+  }
 
-  // stop the browser from suggesting past values
-  form.setAttribute('autocomplete','off');
-  form.querySelectorAll('input,select,textarea').forEach(el => {
-    el.setAttribute('autocomplete','off');
-    el.setAttribute('autocapitalize','off');
-    el.setAttribute('autocorrect','off');
-    el.spellcheck = false;
-  });
-
-  // wrap your existing success branch
-  function finishAndReset() {
+  function onSuccessReset() {
     alert('Thank you. We will reach out to you within 48 hours. We appreciate your business.');
-    // remove extra repeated buyer and seller blocks if your form adds them
+    // remove extra dynamic blocks if your form has repeaters
     const trim = (wrapSel, itemSel) => {
       const wrap = document.querySelector(wrapSel);
       if (!wrap) return;
@@ -874,25 +824,31 @@ document.addEventListener('DOMContentLoaded', function () {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // if your submit code calls form.reset() on success, change it to call finishAndReset()
-  // or dispatch this custom event from your success branch
-  document.addEventListener('form-upload-success', finishAndReset);
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
 
-  // optional safety net: if your code sets json.success true, you can do this
-  const oldFetch = window.fetch;
-  window.fetch = async function(url, opts) {
-    const res = await oldFetch(url, opts);
     try {
-      const clone = res.clone();
-      const text = await clone.text();
-      const json = JSON.parse(text);
-      if (json && (json.success || json.ok)) {
-        // let your existing code run, then also trigger the reset
-        setTimeout(() => document.dispatchEvent(new CustomEvent('form-upload-success')), 50);
+      const data = collectPlainData(form);
+      const attachments = await collectAttachments(form);
+
+      const res = await fetch(GAS_ENDPOINT, {
+        method: 'POST',
+        body: JSON.stringify({ data, attachments })
+      });
+
+      const text = await res.text();
+      let json;
+      try { json = JSON.parse(text); } catch { json = { success:false, message:text }; }
+
+      if (json.success || json.ok) {
+        onSuccessReset();
+      } else {
+        alert('Error: ' + (json.message || json.error || 'Unknown error'));
       }
-    } catch(e) {}
-    return res;
-  };
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  });
 });
 </script>
 
