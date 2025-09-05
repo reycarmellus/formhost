@@ -692,7 +692,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (svc) svc.addEventListener('change', applyVisibility);
 
   // ----- Submit to Google Apps Script -----
-  const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbxKfk1ifQskrjP-QaSzdBkbF9PsqCc9bgyN-jNATDIeVL9QkkCghwGyzwNmspgwWQXgeg/exec';
+  const GAS_ENDPOINT = 'https://script.google.com/macros/s/AKfycbx7m-HD4tJXGuclhS0ZOD38ex91iEtFGXTSutp8vtSHowmYR9jUP98ZG1XzbX38nn82JA/exec';
 
   function collectData(form) {
     const fd = new FormData();
@@ -829,7 +829,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const ref = json.respondentId || '';
         const link = json.filesUrl || '';
         status.innerHTML = 'Submitted. ' + (ref ? 'Reference ID: ' + ref + ' ' : '') + (link ? '<a href="' + link + '" target="_blank">View upload</a>' : '');
-        form.reset();
+        finishAndReset();
       } else {
         status.textContent = 'Error: ' + (json.message || json.error || 'Unknown error');
       }
@@ -839,13 +839,13 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 </script>
-
+  
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const form = document.getElementById('intakeForm') || document.querySelector('form');
   if (!form) return;
 
-  // stop browser suggestions
+  // stop the browser from suggesting past values
   form.setAttribute('autocomplete','off');
   form.querySelectorAll('input,select,textarea').forEach(el => {
     el.setAttribute('autocomplete','off');
@@ -854,38 +854,47 @@ document.addEventListener('DOMContentLoaded', function () {
     el.spellcheck = false;
   });
 
-  // after your existing submit code finishes and sees success,
-  // run this function to pop up, reset, and scroll to the top
+  // wrap your existing success branch
   function finishAndReset() {
     alert('Thank you. We will reach out to you within 48 hours. We appreciate your business.');
-    // remove extra buyer and seller blocks if any
-    const trimRepeater = (wrapSel, itemSel) => {
+    // remove extra repeated buyer and seller blocks if your form adds them
+    const trim = (wrapSel, itemSel) => {
       const wrap = document.querySelector(wrapSel);
       if (!wrap) return;
       const items = wrap.querySelectorAll(itemSel);
-      items.forEach((el, idx) => { if (idx > 0) el.remove(); });
-      // clear the first set of inputs
+      items.forEach((el, i) => { if (i > 0) el.remove(); });
       const first = wrap.querySelector(itemSel);
       if (first) first.querySelectorAll('input').forEach(i => i.value = '');
     };
-    trimRepeater('#buyersInfo','.buyer-entry');
-    trimRepeater('#sellersInfo','.seller-entry');
+    trim('#buyersInfo','.buyer-entry');
+    trim('#sellersInfo','.seller-entry');
 
     form.reset();
-    // show only the first section again
     if (typeof applyVisibility === 'function') applyVisibility();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  // hook into your existing submit handler by listening for a custom event
-  // or, if you control the submit code, call finishAndReset() right after success
+  // if your submit code calls form.reset() on success, change it to call finishAndReset()
+  // or dispatch this custom event from your success branch
   document.addEventListener('form-upload-success', finishAndReset);
 
-  // If you want to trigger it directly inside your current submit code,
-  // call finishAndReset() where you now call form.reset().
+  // optional safety net: if your code sets json.success true, you can do this
+  const oldFetch = window.fetch;
+  window.fetch = async function(url, opts) {
+    const res = await oldFetch(url, opts);
+    try {
+      const clone = res.clone();
+      const text = await clone.text();
+      const json = JSON.parse(text);
+      if (json && (json.success || json.ok)) {
+        // let your existing code run, then also trigger the reset
+        setTimeout(() => document.dispatchEvent(new CustomEvent('form-upload-success')), 50);
+      }
+    } catch(e) {}
+    return res;
+  };
 });
 </script>
-  
 
 </body>
 </html>
