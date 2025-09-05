@@ -829,7 +829,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const ref = json.respondentId || '';
         const link = json.filesUrl || '';
         status.innerHTML = 'Submitted. ' + (ref ? 'Reference ID: ' + ref + ' ' : '') + (link ? '<a href="' + link + '" target="_blank">View upload</a>' : '');
-        finishAndReset();
+        form.reset();
       } else {
         status.textContent = 'Error: ' + (json.message || json.error || 'Unknown error');
       }
